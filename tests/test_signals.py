@@ -5,8 +5,10 @@ import numpy as np
 from autoresearch_futures.signals import (
     momentum_signals,
     smc_signals,
+    linear_signals,
     DEFAULT_MOMENTUM_PARAMS,
     DEFAULT_SMC_PARAMS,
+    DEFAULT_LINEAR_PARAMS,
 )
 
 
@@ -102,6 +104,56 @@ class TestSMCSignals:
     def test_smc_signal_range(self, sample_data):
         """SMC signal should be in [-1, 0, 1]."""
         result = smc_signals(sample_data, DEFAULT_SMC_PARAMS)
+        signal = result["signal"]
+        assert signal.min() >= -1
+        assert signal.max() <= 1
+
+
+class TestLinearSignals:
+    @pytest.fixture
+    def sample_data(self):
+        """Create sample price data with trend."""
+        dates = pd.date_range("2024-01-01 09:00", periods=200, freq="15min")
+        # Create trending data
+        trend = np.linspace(0, 100, 200)
+        noise = np.random.randn(200) * 5
+        prices = 3600 + trend + noise
+        df = pd.DataFrame({
+            "datetime": dates,
+            "open": prices,
+            "high": prices + 5,
+            "low": prices - 5,
+            "close": prices,
+            "volume": [10000] * 200,
+        })
+        return df
+
+    def test_linear_signals_returns_dict(self, sample_data):
+        """linear_signals should return a dict with expected keys."""
+        result = linear_signals(sample_data, DEFAULT_LINEAR_PARAMS)
+        assert isinstance(result, dict)
+        assert "trend" in result
+        assert "regression_band" in result
+        assert "signal" in result
+
+    def test_trend_detection(self, sample_data):
+        """Trend should be detected."""
+        result = linear_signals(sample_data, DEFAULT_LINEAR_PARAMS)
+        trend = result["trend"]
+        # Trend should be -1, 0, or 1
+        assert set(trend.dropna().unique()).issubset({-1, 0, 1})
+
+    def test_regression_band(self, sample_data):
+        """Regression band should be calculated."""
+        result = linear_signals(sample_data, DEFAULT_LINEAR_PARAMS)
+        band = result["regression_band"]
+        # Band should have upper and lower
+        assert "upper" in band
+        assert "lower" in band
+
+    def test_linear_signal_range(self, sample_data):
+        """Linear signal should be in [-1, 0, 1]."""
+        result = linear_signals(sample_data, DEFAULT_LINEAR_PARAMS)
         signal = result["signal"]
         assert signal.min() >= -1
         assert signal.max() <= 1

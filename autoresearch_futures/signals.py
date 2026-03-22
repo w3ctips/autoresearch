@@ -235,3 +235,127 @@ def smc_signals(
         "liquidity_sweep": sweep,
         "signal": signal,
     }
+
+
+def calc_regression_band(
+    close: pd.Series,
+    period: int = 20,
+    num_std: float = 2.0,
+) -> dict:
+    """
+    Calculate linear regression channel.
+
+    Returns dict with regression line, upper and lower bands.
+    """
+    regression = close.rolling(window=period).apply(
+        lambda x: stats.linregress(range(len(x)), x)[0] * (len(x) - 1) + x.iloc[0],
+        raw=False,
+    )
+
+    residuals = close - regression
+    std = residuals.rolling(window=period).std()
+
+    upper = regression + num_std * std
+    lower = regression - num_std * std
+
+    return {
+        "regression": regression,
+        "upper": upper,
+        "lower": lower,
+        "std": std,
+    }
+
+
+def detect_trend(
+    df: pd.DataFrame,
+    period: int = 20,
+) -> pd.Series:
+    """
+    Detect trend direction using linear regression slope.
+    """
+    close = df["close"]
+    slopes = close.rolling(window=period).apply(
+        lambda x: stats.linregress(range(len(x)), x)[0],
+        raw=False,
+    )
+
+    normalized_slope = slopes / close * 100
+
+    trend = pd.Series(0, index=df.index)
+    trend[normalized_slope > 0.01] = 1
+    trend[normalized_slope < -0.01] = -1
+
+    return trend
+
+
+def detect_breakout(
+    df: pd.DataFrame,
+    band: dict,
+    confirm_bars: int = 3,
+) -> pd.Series:
+    """
+    Detect breakouts from regression channel.
+    """
+    close = df["close"]
+    breakout = pd.Series(0, index=df.index)
+
+    above_upper = close > band["upper"]
+    for i in range(confirm_bars, len(df)):
+        if above_upper.iloc[i-confirm_bars:i].all():
+            breakout.iloc[i] = 1
+
+    below_lower = close < band["lower"]
+    for i in range(confirm_bars, len(df)):
+        if below_lower.iloc[i-confirm_bars:i].all():
+            breakout.iloc[i] = -1
+
+    return breakout
+
+
+def linear_signals(
+    df: pd.DataFrame,
+    params: Optional[Dict] = None,
+) -> Dict:
+    """
+    Generate linear extrapolation trading signals.
+
+    Uses linear regression channels and trend analysis.
+
+    Args:
+        df: DataFrame with OHLCV data
+        params: Parameters for linear signals
+
+    Returns:
+        Dict with trend, regression band, and combined signal
+    """
+    if params is None:
+        params = DEFAULT_LINEAR_PARAMS
+
+    close = df["close"]
+
+    band = calc_regression_band(
+        close,
+        params["regression_period"],
+        params["band_std"],
+    )
+
+    trend = detect_trend(df, params["regression_period"])
+    breakout = detect_breakout(df, band, params["breakout_confirm"])
+
+    signal = pd.Series(0, index=df.index)
+
+    buy = (trend == 1) & (close <= band["regression"])
+    buy = buy | (breakout == 1)
+
+    sell = (trend == -1) & (close >= band["regression"])
+    sell = sell | (breakout == -1)
+
+    signal[buy] = 1
+    signal[sell] = -1
+
+    return {
+        "trend": trend,
+        "regression_band": band,
+        "breakout": breakout,
+        "signal": signal,
+    }
