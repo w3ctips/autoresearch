@@ -1,0 +1,31 @@
+# autoresearch_futures/pyproject.toml
+[project]
+name = "autoresearch-futures"
+version = "0.1.0"
+description = "Self-evolving futures strategy research system"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "akshare>=1.12.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "pyarrow>=14.0.0",
+    "requests>=2.31.0",
+    "scipy>=1.11.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
