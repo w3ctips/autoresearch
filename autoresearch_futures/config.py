@@ -94,7 +94,7 @@ DEFAULT_PARAMS = {
     "linear": {
         "regression_period": 25,
         "band_std": 2.0,
-        "breakout_confirm": 3,
+        "breakout_confirm": 2,
         "timeframe": "30min",
     },
 }
