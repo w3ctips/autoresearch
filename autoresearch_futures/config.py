@@ -78,8 +78,8 @@ class Config:
 DEFAULT_PARAMS = {
     "smc": {
         "ob_lookback": 20,
-        "fvg_min_size": 0.002,
-        "sweep_threshold": 0.01,
+        "fvg_min_size": 0.001,
+        "sweep_threshold": 0.005,
         "timeframe": "1h",
     },
     "momentum": {

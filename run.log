@@ -1,5 +1,5 @@
 Running evolution on split 0...
 ---
-score:    0.987925
-rb: sharpe=-0.6444 return=-0.0001
-i: sharpe=7.1398 return=0.0004
+score:    1.454966
+rb: sharpe=0.3046 return=0.0000
+i: sharpe=9.8393 return=0.0005
