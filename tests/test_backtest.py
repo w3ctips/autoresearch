@@ -5,6 +5,9 @@ import numpy as np
 from autoresearch_futures.backtest import (
     BacktestResult,
     calc_score,
+    calc_commission,
+    calc_slippage,
+    calc_total_cost,
     SCORE_WEIGHTS,
 )
 
@@ -69,3 +72,30 @@ class TestBacktestResult:
         score_good = calc_score(result_good, SCORE_WEIGHTS)
         score_bad = calc_score(result_bad, SCORE_WEIGHTS)
         assert score_good > score_bad
+
+
+class TestTradeCost:
+    def test_calc_commission(self):
+        """calc_commission should calculate commission based on trade value."""
+        trade_value = 1_000_000  # 100万
+        commission = calc_commission(trade_value, 0.0001)
+        assert commission == 100  # 万分之一 = 100元
+
+    def test_calc_slippage(self):
+        """calc_slippage should calculate slippage based on ticks."""
+        volume = 10  # 10手
+        tick_size = 1.0  # 最小变动价位
+        slippage = calc_slippage(volume, tick_size, slippage_ticks=1)
+        # Slippage = volume * tick_size * 2 (entry + exit) * slippage_ticks
+        assert slippage == 20  # 10 * 1 * 2
+
+    def test_calc_total_cost(self):
+        """calc_total_cost should sum commission and slippage."""
+        cost = calc_total_cost(
+            trade_value=1_000_000,
+            volume=10,
+            tick_size=1.0,
+            commission_rate=0.0001,
+            slippage_ticks=1,
+        )
+        assert cost == 120  # 100 (commission) + 20 (slippage)

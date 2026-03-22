@@ -5,10 +5,17 @@ Calculates performance metrics with trading costs.
 from dataclasses import dataclass
 from typing import Dict
 
-from autoresearch_futures.config import SCORE_WEIGHTS
+from autoresearch_futures.config import SCORE_WEIGHTS, BacktestConfig
 
 # Re-export for convenience
-__all__ = ["BacktestResult", "calc_score", "SCORE_WEIGHTS"]
+__all__ = [
+    "BacktestResult",
+    "calc_score",
+    "calc_commission",
+    "calc_slippage",
+    "calc_total_cost",
+    "SCORE_WEIGHTS",
+]
 
 
 @dataclass
@@ -52,3 +59,66 @@ def calc_score(result: BacktestResult, weights: Dict[str, float]) -> float:
         weights["precision"] * result.signal_precision -
         weights["drawdown"] * result.max_drawdown
     )
+
+
+def calc_commission(trade_value: float, commission_rate: float) -> float:
+    """
+    Calculate commission cost.
+
+    Args:
+        trade_value: Total trade value in yuan
+        commission_rate: Commission rate (e.g., 0.0001 = 万分之一)
+
+    Returns:
+        Commission cost in yuan
+    """
+    return trade_value * commission_rate
+
+
+def calc_slippage(volume: int, tick_size: float, slippage_ticks: int = 1) -> float:
+    """
+    Calculate slippage cost.
+
+    Assumes slippage affects both entry and exit.
+
+    Args:
+        volume: Number of contracts
+        tick_size: Minimum price tick
+        slippage_ticks: Number of ticks for slippage
+
+    Returns:
+        Slippage cost in yuan (per contract multiplier = 1)
+    """
+    # Slippage affects both entry and exit, and is per tick
+    return volume * tick_size * 2 * slippage_ticks
+
+
+def calc_total_cost(
+    trade_value: float,
+    volume: int,
+    tick_size: float,
+    commission_rate: float = None,
+    slippage_ticks: int = None,
+) -> float:
+    """
+    Calculate total trading cost.
+
+    Args:
+        trade_value: Total trade value
+        volume: Number of contracts
+        tick_size: Price tick size
+        commission_rate: Commission rate (default from config)
+        slippage_ticks: Slippage in ticks (default from config)
+
+    Returns:
+        Total trading cost in yuan
+    """
+    if commission_rate is None:
+        commission_rate = BacktestConfig.commission_rate
+    if slippage_ticks is None:
+        slippage_ticks = BacktestConfig.slippage_ticks
+
+    commission = calc_commission(trade_value, commission_rate)
+    slippage = calc_slippage(volume, tick_size, slippage_ticks)
+
+    return commission + slippage
