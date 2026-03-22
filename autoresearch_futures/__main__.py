@@ -13,7 +13,7 @@ def main():
     )
     parser.add_argument(
         "command",
-        choices=["prepare", "evolve", "test"],
+        choices=["prepare", "evolve", "test", "monitor"],
         help="Command to run",
     )
     parser.add_argument("--symbols", nargs="+", help="Symbols to process (default: all)")
@@ -103,6 +103,25 @@ def main():
         import subprocess
         result = subprocess.run(["pytest", "tests/", "-v"])
         sys.exit(result.returncode)
+
+    elif args.command == "monitor":
+        from autoresearch_futures.monitor import run_monitor
+        from autoresearch_futures.config import DEFAULT_PARAMS
+
+        symbols = args.symbols or ["rb", "i"]
+        print(f"启动实时监控: {symbols}")
+        print("按 Ctrl+C 停止")
+        print("-" * 50)
+
+        try:
+            run_monitor(
+                symbols=symbols,
+                params=DEFAULT_PARAMS,
+                poll_interval=15,
+                continuous=True,
+            )
+        except KeyboardInterrupt:
+            print("\n监控已停止")
 
 
 if __name__ == "__main__":
