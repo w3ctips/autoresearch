@@ -17,7 +17,6 @@ def main():
         help="Command to run",
     )
     parser.add_argument("--symbols", nargs="+", help="Symbols to process (default: all)")
-    parser.add_argument("--force", action="store_true", help="Force redownload data")
 
     args = parser.parse_args()
 
@@ -31,7 +30,7 @@ def main():
         )
 
         print("Downloading futures data...")
-        download_all_contracts(symbols=args.symbols, force=args.force)
+        download_all_contracts(symbols=args.symbols)
 
         symbols = list_available_symbols()
         if symbols:
