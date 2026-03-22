@@ -28,6 +28,10 @@ autoresearch-futures = "autoresearch_futures.__main__:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# 告诉 hatchling 包文件在当前目录
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
