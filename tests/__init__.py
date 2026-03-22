@@ -1,1 +1,1 @@
-Tests for autoresearch_futures.
+"""Tests for autoresearch_futures."""

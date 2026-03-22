@@ -9,6 +9,8 @@ from autoresearch_futures.backtest import (
     calc_slippage,
     calc_total_cost,
     SCORE_WEIGHTS,
+    run_backtest,
+    run_multi_backtest,
 )
 
 
@@ -99,3 +101,70 @@ class TestTradeCost:
             slippage_ticks=1,
         )
         assert cost == 120  # 100 (commission) + 20 (slippage)
+
+
+class TestRunBacktest:
+    @pytest.fixture
+    def sample_price_data(self):
+        """Create sample price data for testing."""
+        dates = pd.date_range("2024-01-01 09:00", periods=100, freq="15min")
+        prices = 3600 + np.cumsum(np.random.randn(100) * 5)
+        df = pd.DataFrame({
+            "datetime": dates,
+            "open": prices,
+            "high": prices + 10,
+            "low": prices - 10,
+            "close": prices,
+            "volume": [10000] * 100,
+        })
+        return df
+
+    @pytest.fixture
+    def sample_signals(self):
+        """Create sample signals for testing."""
+        # Simple: buy at bar 10, sell at bar 30
+        signals = pd.Series(0, index=range(100))
+        signals.iloc[10] = 1   # Buy
+        signals.iloc[30] = -1  # Sell
+        return signals
+
+    def test_run_backtest_returns_result(self, sample_price_data, sample_signals):
+        """run_backtest should return BacktestResult."""
+        result = run_backtest(
+            signals=sample_signals,
+            data=sample_price_data,
+            tick_size=1.0,
+            contract_multiplier=10,
+        )
+        assert isinstance(result, BacktestResult)
+
+    def test_run_backtest_counts_trades(self, sample_price_data, sample_signals):
+        """run_backtest should correctly count trades."""
+        result = run_backtest(
+            signals=sample_signals,
+            data=sample_price_data,
+            tick_size=1.0,
+            contract_multiplier=10,
+        )
+        # 1 buy + 1 sell = 1 round trip = 2 trades
+        assert result.total_trades >= 2
+
+    def test_run_multi_backtest(self, sample_price_data, sample_signals):
+        """run_multi_backtest should handle multiple symbols."""
+        signals_dict = {
+            "rb": sample_signals,
+            "i": sample_signals,
+        }
+        data_dict = {
+            "rb": sample_price_data,
+            "i": sample_price_data,
+        }
+        results = run_multi_backtest(
+            signals_dict=signals_dict,
+            data_dict=data_dict,
+            tick_sizes={"rb": 1.0, "i": 0.5},
+            contract_multipliers={"rb": 10, "i": 100},
+        )
+        assert "rb" in results
+        assert "i" in results
+        assert isinstance(results["rb"], BacktestResult)
