@@ -1,0 +1,1 @@
+"""Autoresearch Futures - Autonomous futures trading research framework."""
