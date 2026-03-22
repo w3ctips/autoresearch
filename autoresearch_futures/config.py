@@ -77,9 +77,9 @@ class Config:
 # 适用于15分钟高频策略
 DEFAULT_PARAMS = {
     "smc": {
-        "ob_lookback": 20,
+        "ob_lookback": 25,
         "fvg_min_size": 0.001,
-        "sweep_threshold": 0.005,
+        "sweep_threshold": 0.004,
         "timeframe": "1h",
     },
     "momentum": {
@@ -92,7 +92,7 @@ DEFAULT_PARAMS = {
         "timeframe": "15min",
     },
     "linear": {
-        "regression_period": 20,
+        "regression_period": 25,
         "band_std": 2.0,
         "breakout_confirm": 3,
         "timeframe": "30min",
