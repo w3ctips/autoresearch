@@ -23,21 +23,25 @@ def main():
 
     if args.command == "prepare":
         from autoresearch_futures.prepare import (
-            download_all_contracts, ensure_dirs, save_splits,
-            generate_walk_forward_splits, list_available_symbols, load_data,
+            download_all_contracts,
+            save_splits,
+            generate_walk_forward_splits,
+            list_available_symbols,
+            load_data,
         )
-        ensure_dirs()
+
         print("Downloading futures data...")
         download_all_contracts(symbols=args.symbols, force=args.force)
 
         symbols = list_available_symbols()
         if symbols:
             df = load_data(symbols[0])
-            start = df["datetime"].min().strftime("%Y-%m-%d")
-            end = df["datetime"].max().strftime("%Y-%m-%d")
-            splits = generate_walk_forward_splits(start, end)
-            save_splits(splits)
-            print(f"Generated {len(splits)} walk-forward splits")
+            if df is not None and len(df) > 0:
+                start = df["datetime"].min().strftime("%Y-%m-%d")
+                end = df["datetime"].max().strftime("%Y-%m-%d")
+                splits = generate_walk_forward_splits(start, end)
+                save_splits(splits)
+                print(f"Generated {len(splits)} walk-forward splits")
         print("Done!")
 
     elif args.command == "evolve":
@@ -46,9 +50,8 @@ def main():
         from autoresearch_futures.config import DEFAULT_PARAMS
         import subprocess
 
-        try:
-            splits = load_splits()
-        except FileNotFoundError:
+        splits = load_splits()
+        if not splits:
             print("No splits found. Run 'python -m autoresearch_futures prepare' first.")
             sys.exit(1)
 
@@ -60,7 +63,10 @@ def main():
         tick_sizes = {s: 1.0 for s in symbols}
         contract_multipliers = {s: 10 for s in symbols}
 
-        commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+        try:
+            commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+        except subprocess.CalledProcessError:
+            commit = "unknown"
 
         split = splits[0] if splits else {}
         if not split:
