@@ -117,3 +117,121 @@ def momentum_signals(
         "velocity": velocity,
         "signal": signal,
     }
+
+
+def detect_order_blocks(
+    df: pd.DataFrame,
+    lookback: int = 20,
+) -> pd.Series:
+    """
+    Detect Order Blocks (OB).
+    An OB is the last opposite candle before a strong move.
+    """
+    ob = pd.Series(0, index=df.index)
+
+    for i in range(lookback, len(df)):
+        # Check for strong move in next few bars
+        future_high = df["high"].iloc[i:i+5].max()
+        future_low = df["low"].iloc[i:i+5].min()
+        current_close = df["close"].iloc[i]
+
+        # Strong bullish move
+        if future_high > current_close * 1.01:
+            if df["close"].iloc[i] < df["open"].iloc[i]:
+                ob.iloc[i] = 1
+
+        # Strong bearish move
+        if future_low < current_close * 0.99:
+            if df["close"].iloc[i] > df["open"].iloc[i]:
+                ob.iloc[i] = -1
+
+    return ob
+
+
+def detect_fvg(
+    df: pd.DataFrame,
+    min_size: float = 0.002,
+) -> pd.Series:
+    """
+    Detect Fair Value Gaps (FVG).
+    A FVG occurs when there's a gap between candles.
+    """
+    fvg = pd.Series(0, index=df.index)
+
+    for i in range(2, len(df)):
+        # Bullish FVG
+        if df["high"].iloc[i-2] < df["low"].iloc[i]:
+            gap_size = (df["low"].iloc[i] - df["high"].iloc[i-2]) / df["close"].iloc[i-1]
+            if gap_size >= min_size:
+                fvg.iloc[i-1] = 1
+
+        # Bearish FVG
+        if df["low"].iloc[i-2] > df["high"].iloc[i]:
+            gap_size = (df["low"].iloc[i-2] - df["high"].iloc[i]) / df["close"].iloc[i-1]
+            if gap_size >= min_size:
+                fvg.iloc[i-1] = -1
+
+    return fvg
+
+
+def detect_liquidity_sweep(
+    df: pd.DataFrame,
+    threshold: float = 0.01,
+) -> pd.Series:
+    """
+    Detect liquidity sweeps.
+    A sweep occurs when price breaks a swing high/low then reverses.
+    """
+    sweep = pd.Series(0, index=df.index)
+
+    for i in range(5, len(df) - 5):
+        recent_high = df["high"].iloc[i-5:i].max()
+        if df["high"].iloc[i] > recent_high:
+            if df["close"].iloc[i] < recent_high * (1 - threshold):
+                sweep.iloc[i] = -1
+
+        recent_low = df["low"].iloc[i-5:i].min()
+        if df["low"].iloc[i] < recent_low:
+            if df["close"].iloc[i] > recent_low * (1 + threshold):
+                sweep.iloc[i] = 1
+
+    return sweep
+
+
+def smc_signals(
+    df: pd.DataFrame,
+    params: Optional[Dict] = None,
+) -> Dict:
+    """
+    Generate SMC (Smart Money Concept) trading signals.
+
+    Args:
+        df: DataFrame with OHLCV data
+        params: Parameters for SMC detection
+
+    Returns:
+        Dict with OB, FVG, liquidity sweep, and combined signal
+    """
+    if params is None:
+        params = DEFAULT_SMC_PARAMS
+
+    # Detect patterns
+    order_block = detect_order_blocks(df, params["ob_lookback"])
+    fvg = detect_fvg(df, params["fvg_min_size"])
+    sweep = detect_liquidity_sweep(df, params["sweep_threshold"])
+
+    # Generate combined signal
+    signal = pd.Series(0, index=df.index)
+
+    bullish = ((order_block == 1) & (fvg == 1)) | (sweep == 1)
+    bearish = ((order_block == -1) & (fvg == -1)) | (sweep == -1)
+
+    signal[bullish] = 1
+    signal[bearish] = -1
+
+    return {
+        "order_block": order_block,
+        "fvg": fvg,
+        "liquidity_sweep": sweep,
+        "signal": signal,
+    }
