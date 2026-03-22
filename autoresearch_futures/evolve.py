@@ -22,6 +22,11 @@ def generate_all_signals(
 
     all_signals = {}
     for symbol, df in data_dict.items():
+        # Skip if no data
+        if df is None or df.empty:
+            print(f"Warning: No data for {symbol}, skipping")
+            continue
+
         smc = smc_signals(df, params.get("smc"))
         momentum = momentum_signals(df, params.get("momentum"))
         linear = linear_signals(df, params.get("linear"))

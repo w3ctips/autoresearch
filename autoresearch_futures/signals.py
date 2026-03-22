@@ -129,19 +129,22 @@ def detect_order_blocks(
     """
     ob = pd.Series(0, index=df.index)
 
-    for i in range(lookback, len(df)):
-        # Check for strong move in next few bars
+    # 需要足够的未来数据进行检测
+    for i in range(lookback, len(df) - 5):
+        # Check for strong move in next 5 bars
         future_high = df["high"].iloc[i:i+5].max()
         future_low = df["low"].iloc[i:i+5].min()
         current_close = df["close"].iloc[i]
 
-        # Strong bullish move
-        if future_high > current_close * 1.01:
+        # Strong bullish move (1% gain)
+        if future_high > current_close * 1.005:
+            # Bearish candle before bullish move
             if df["close"].iloc[i] < df["open"].iloc[i]:
                 ob.iloc[i] = 1
 
-        # Strong bearish move
-        if future_low < current_close * 0.99:
+        # Strong bearish move (1% drop)
+        if future_low < current_close * 0.995:
+            # Bullish candle before bearish move
             if df["close"].iloc[i] > df["open"].iloc[i]:
                 ob.iloc[i] = -1
 
@@ -159,14 +162,14 @@ def detect_fvg(
     fvg = pd.Series(0, index=df.index)
 
     for i in range(2, len(df)):
-        # Bullish FVG
-        if df["high"].iloc[i-2] < df["low"].iloc[i]:
+        # Bullish FVG: gap between candle i-2's high and candle i's low
+        if df["low"].iloc[i] > df["high"].iloc[i-2]:
             gap_size = (df["low"].iloc[i] - df["high"].iloc[i-2]) / df["close"].iloc[i-1]
             if gap_size >= min_size:
                 fvg.iloc[i-1] = 1
 
-        # Bearish FVG
-        if df["low"].iloc[i-2] > df["high"].iloc[i]:
+        # Bearish FVG: gap between candle i-2's low and candle i's high
+        if df["high"].iloc[i] < df["low"].iloc[i-2]:
             gap_size = (df["low"].iloc[i-2] - df["high"].iloc[i]) / df["close"].iloc[i-1]
             if gap_size >= min_size:
                 fvg.iloc[i-1] = -1
@@ -176,7 +179,7 @@ def detect_fvg(
 
 def detect_liquidity_sweep(
     df: pd.DataFrame,
-    threshold: float = 0.01,
+    threshold: float = 0.005,  # 降低阈值
 ) -> pd.Series:
     """
     Detect liquidity sweeps.
@@ -184,16 +187,20 @@ def detect_liquidity_sweep(
     """
     sweep = pd.Series(0, index=df.index)
 
-    for i in range(5, len(df) - 5):
-        recent_high = df["high"].iloc[i-5:i].max()
+    for i in range(10, len(df) - 5):  # 需要前后数据
+        # Check for sweep above recent high
+        recent_high = df["high"].iloc[i-10:i].max()
         if df["high"].iloc[i] > recent_high:
+            # Price broke high but closed below it (reversal)
             if df["close"].iloc[i] < recent_high * (1 - threshold):
-                sweep.iloc[i] = -1
+                sweep.iloc[i] = -1  # Bearish sweep
 
-        recent_low = df["low"].iloc[i-5:i].min()
+        # Check for sweep below recent low
+        recent_low = df["low"].iloc[i-10:i].min()
         if df["low"].iloc[i] < recent_low:
+            # Price broke low but closed above it (reversal)
             if df["close"].iloc[i] > recent_low * (1 + threshold):
-                sweep.iloc[i] = 1
+                sweep.iloc[i] = 1  # Bullish sweep
 
     return sweep
 
@@ -220,11 +227,14 @@ def smc_signals(
     fvg = detect_fvg(df, params["fvg_min_size"])
     sweep = detect_liquidity_sweep(df, params["sweep_threshold"])
 
-    # Generate combined signal
+    # Generate combined signal - 使用更宽松的条件
     signal = pd.Series(0, index=df.index)
 
-    bullish = ((order_block == 1) & (fvg == 1)) | (sweep == 1)
-    bearish = ((order_block == -1) & (fvg == -1)) | (sweep == -1)
+    # Bullish: OB bullish OR FVG bullish OR sweep bullish
+    bullish = (order_block == 1) | (fvg == 1) | (sweep == 1)
+
+    # Bearish: OB bearish OR FVG bearish OR sweep bearish
+    bearish = (order_block == -1) | (fvg == -1) | (sweep == -1)
 
     signal[bullish] = 1
     signal[bearish] = -1

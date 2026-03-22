@@ -74,9 +74,18 @@ def main():
 
         print(f"Running evolution on split {split['split_id']}...")
 
+        # Load data for each symbol, filter out those with no data
         data_dict = {}
         for symbol in symbols:
-            data_dict[symbol] = load_split_data(symbol, split, "train")
+            df = load_split_data(symbol, split, "train")
+            if df is not None and not df.empty:
+                data_dict[symbol] = df
+            else:
+                print(f"Warning: No data for {symbol}, skipping")
+
+        if not data_dict:
+            print("No data available for any symbol. Run 'prepare' first.")
+            sys.exit(1)
 
         score, results, signals = run_evolution_step(
             data_dict, DEFAULT_PARAMS, tick_sizes, contract_multipliers,

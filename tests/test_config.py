@@ -19,14 +19,17 @@ class TestConfig:
         assert isinstance(config.data, DataConfig)
 
     def test_data_config_defaults(self):
-        """DataConfig should have correct defaults."""
+        """DataConfig should have correct defaults for minute data."""
         data_config = DataConfig()
+        assert data_config.data_type == "minute"
         assert data_config.base_timeframe == "15min"
         assert data_config.synthetic_timeframes == ["30min", "1h", "2h", "4h"]
-        assert data_config.train_window_months == 12
-        assert data_config.embargo_weeks == 2
-        assert data_config.valid_window_months == 1
-        assert data_config.locked_predict_months == 6
+        # 分钟数据适配的参数
+        assert data_config.train_window_months == 1
+        assert data_config.embargo_weeks == 1
+        assert data_config.valid_window_months == 0
+        assert data_config.valid_window_weeks == 2
+        assert data_config.locked_predict_weeks == 2
 
     def test_backtest_config_defaults(self):
         """BacktestConfig should have correct defaults."""

@@ -6,6 +6,8 @@ Handles:
 - K-line timeframe synthesis
 - Walk-Forward split generation
 - Data loading utilities
+
+Reference: https://akshare.akfamily.xyz/data/futures/futures.html
 """
 import os
 import json
@@ -28,6 +30,82 @@ _data_config = _config.data
 # Cache directory (expanded from ~)
 CACHE_DIR = os.path.expanduser(_data_config.cache_dir)
 
+# 期货品种代码映射 (小写 -> 大写，用于接口调用)
+# 主力合约格式: 大写品种代码 + "0"，如 "RB0"
+FUTURES_SYMBOLS = {
+    # 上期所 SHFE
+    'rb': 'RB',   # 螺纹钢
+    'hc': 'HC',   # 热卷
+    'cu': 'CU',   # 铜
+    'al': 'AL',   # 铝
+    'zn': 'ZN',   # 锌
+    'au': 'AU',   # 黄金
+    'ag': 'AG',   # 白银
+    'ni': 'NI',   # 镍
+    'sn': 'SN',   # 锡
+    'pb': 'PB',   # 铅
+    'ss': 'SS',   # 不锈钢
+    'wr': 'WR',   # 线材
+    'sp': 'SP',   # 纸浆
+    'fu': 'FU',   # 燃油
+    'bu': 'BU',   # 沥青
+    'ru': 'RU',   # 橡胶
+    'nr': 'NR',   # 20号胶
+    'ao': 'AO',   # 氧化铝
+    'br': 'BR',   # 丁二烯橡胶
+    'ec': 'EC',   # 集运指数(欧线)
+    # 大商所 DCE
+    'i': 'I',     # 铁矿石
+    'j': 'J',     # 焦炭
+    'jm': 'JM',   # 焦煤
+    'v': 'V',     # PVC
+    'l': 'L',     # 塑料
+    'pp': 'PP',   # 聚丙烯
+    'eb': 'EB',   # 苯乙烯
+    'eg': 'EG',   # 乙二醇
+    'pg': 'PG',   # 液化石油气
+    'p': 'P',     # 棕榈油
+    'y': 'Y',     # 豆油
+    'a': 'A',     # 豆一
+    'b': 'B',     # 豆二
+    'm': 'M',     # 豆粕
+    'c': 'C',     # 玉米
+    'cs': 'CS',   # 淀粉
+    'jd': 'JD',   # 鸡蛋
+    'rr': 'RR',   # 粳米
+    'fb': 'FB',   # 纤维板
+    'bb': 'BB',   # 胶合板
+    'lh': 'LH',   # 生猪
+    # 郑商所 CZCE
+    'cf': 'CF',   # 棉花
+    'sr': 'SR',   # 白糖
+    'ta': 'TA',   # PTA
+    'ma': 'MA',   # 甲醇
+    'fg': 'FG',   # 玻璃
+    'sa': 'SA',   # 纯碱
+    'ur': 'UR',   # 尿素
+    'oi': 'OI',   # 菜油
+    'rm': 'RM',   # 菜粕
+    'rs': 'RS',   # 菜籽
+    'pm': 'PM',   # 普麦
+    'wh': 'WH',   # 强麦
+    'ri': 'RI',   # 早籼稻
+    'lr': 'LR',   # 晚籼稻
+    'jr': 'JR',   # 粳稻
+    'ap': 'AP',   # 苹果
+    'cj': 'CJ',   # 红枣
+    'pk': 'PK',   # 花生
+    'sf': 'SF',   # 硅铁
+    'sm': 'SM',   # 锰铁
+    'zc': 'ZC',   # 动力煤
+    'pf': 'PF',   # 短纤
+    'sh': 'SH',   # 烧碱
+    'px': 'PX',   # 对二甲苯
+    # 广期所 GFEX
+    'si': 'SI',   # 工业硅
+    'lc': 'LC',   # 碳酸锂
+}
+
 
 # =============================================================================
 # Data Download Functions
@@ -35,31 +113,115 @@ CACHE_DIR = os.path.expanduser(_data_config.cache_dir)
 
 def get_futures_list() -> List[str]:
     """
-    Get list of futures symbols from akshare.
+    Get list of futures symbols.
 
     Returns:
         List of futures symbol codes (e.g., ['rb', 'i', 'hc', 'j'])
     """
+    return sorted(FUTURES_SYMBOLS.keys())
+
+
+def get_main_contract_symbol(symbol: str) -> str:
+    """
+    Convert symbol to main contract format for akshare API.
+
+    Args:
+        symbol: Futures symbol code (e.g., 'rb')
+
+    Returns:
+        Main contract symbol (e.g., 'RB0')
+    """
+    upper = FUTURES_SYMBOLS.get(symbol.lower(), symbol.upper())
+    return f"{upper}0"
+
+
+def download_minute_data(symbol: str, period: str = "15") -> pd.DataFrame:
+    """
+    Download minute-level historical data for a futures symbol.
+
+    Note: This API only returns approximately the last 1000 bars.
+
+    Args:
+        symbol: Futures symbol code (e.g., 'rb' for rebar)
+        period: Time period ('1', '5', '15', '30', '60') minutes
+
+    Returns:
+        DataFrame with columns: datetime, open, high, low, close, volume, hold
+    """
     try:
-        df = ak.futures_main_sina()
-        # Extract unique symbols from the returned data
-        if 'symbol' in df.columns:
-            symbols = df['symbol'].unique().tolist()
-        elif '代码' in df.columns:
-            symbols = df['代码'].unique().tolist()
-        else:
-            # Try to extract from first column
-            symbols = df.iloc[:, 0].unique().tolist()
-        return sorted(symbols)
+        main_symbol = get_main_contract_symbol(symbol)
+        df = ak.futures_zh_minute_sina(symbol=main_symbol, period=period)
+
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        # 列名已经是标准格式: datetime, open, high, low, close, volume, hold
+        df['datetime'] = pd.to_datetime(df['datetime'])
+        df = df.sort_values('datetime').reset_index(drop=True)
+
+        return df
+
     except Exception as e:
-        print(f"Warning: Could not fetch futures list: {e}")
-        # Return common futures symbols as fallback
-        return ['rb', 'i', 'hc', 'j', 'jm', 'cu', 'al', 'zn', 'au', 'ag']
+        print(f"Error downloading minute data for {symbol}: {e}")
+        return pd.DataFrame()
+
+
+def download_daily_data(symbol: str) -> pd.DataFrame:
+    """
+    Download daily historical data for a futures main contract.
+
+    Args:
+        symbol: Futures symbol code (e.g., 'rb' for rebar)
+
+    Returns:
+        DataFrame with columns: datetime, open, high, low, close, volume
+    """
+    try:
+        main_symbol = get_main_contract_symbol(symbol)
+        df = ak.futures_main_sina(symbol=main_symbol)
+
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        # 重命名中文列名
+        column_map = {
+            '日期': 'datetime',
+            '开盘价': 'open',
+            '最高价': 'high',
+            '最低价': 'low',
+            '收盘价': 'close',
+            '成交量': 'volume',
+            '持仓量': 'open_interest',
+            '动态结算价': 'settle',
+        }
+        df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
+
+        df['datetime'] = pd.to_datetime(df['datetime'])
+        df = df.sort_values('datetime').reset_index(drop=True)
+
+        # 确保数值类型
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # 选择需要的列
+        required_cols = ['datetime', 'open', 'high', 'low', 'close', 'volume']
+        available_cols = [c for c in required_cols if c in df.columns]
+
+        return df[available_cols]
+
+    except Exception as e:
+        print(f"Error downloading daily data for {symbol}: {e}")
+        return pd.DataFrame()
 
 
 def download_contract(symbol: str, start_date: Optional[str] = None) -> pd.DataFrame:
     """
     Download historical data for a single futures contract.
+
+    Data type is determined by DataConfig.data_type:
+    - "daily": Download daily K-line data (recommended for strategy research)
+    - "minute": Download 15-minute K-line data (limited to ~1000 bars)
 
     Args:
         symbol: Futures symbol code (e.g., 'rb' for rebar)
@@ -68,54 +230,21 @@ def download_contract(symbol: str, start_date: Optional[str] = None) -> pd.DataF
     Returns:
         DataFrame with columns: datetime, open, high, low, close, volume
     """
-    try:
-        # Try to get 15-minute data
-        df = ak.futures_zh_minute_sina(symbol=symbol, period="15")
+    # 根据配置选择数据类型
+    if _data_config.data_type == "minute":
+        df = download_minute_data(symbol, period="15")
+    else:
+        df = download_daily_data(symbol)
 
-        # Rename columns to standardized names
-        column_map = {
-            '日期': 'datetime',
-            '开盘价': 'open',
-            '最高价': 'high',
-            '最低价': 'low',
-            '收盘价': 'close',
-            '成交量': 'volume',
-            'date': 'datetime',
-            'open': 'open',
-            'high': 'high',
-            'low': 'low',
-            'close': 'close',
-            'volume': 'volume',
-        }
-        df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
-
-        # Ensure datetime column exists and is datetime type
-        if 'datetime' in df.columns:
-            df['datetime'] = pd.to_datetime(df['datetime'])
-        else:
-            # Create datetime from index if needed
-            df = df.reset_index()
-            df['datetime'] = pd.to_datetime(df.iloc[:, 0])
-            df = df.rename(columns={df.columns[0]: 'datetime'})
-
-        # Filter by start date if provided
-        if start_date:
-            start_dt = pd.to_datetime(start_date)
-            df = df[df['datetime'] >= start_dt]
-
-        # Sort by datetime
-        df = df.sort_values('datetime').reset_index(drop=True)
-
-        # Ensure numeric columns
-        for col in ['open', 'high', 'low', 'close', 'volume']:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-
-        return df[['datetime', 'open', 'high', 'low', 'close', 'volume']]
-
-    except Exception as e:
-        print(f"Error downloading {symbol}: {e}")
+    if df.empty:
         return pd.DataFrame()
+
+    # 过滤日期
+    if start_date and 'datetime' in df.columns:
+        start_dt = pd.to_datetime(start_date)
+        df = df[df['datetime'] >= start_dt]
+
+    return df
 
 
 def download_all_contracts(
@@ -139,12 +268,15 @@ def download_all_contracts(
 
     results = {}
     for symbol in symbols:
+        print(f"Downloading {symbol}...")
         df = download_contract(symbol, start_date)
         if not df.empty:
             results[symbol] = df
             if save:
                 save_raw_data(symbol, df)
-        print(f"Downloaded {symbol}: {len(df)} rows")
+            print(f"  Downloaded {symbol}: {len(df)} rows")
+        else:
+            print(f"  No data for {symbol}")
 
     return results
 
@@ -170,11 +302,19 @@ def load_raw_data(symbol: str) -> Optional[pd.DataFrame]:
 
 def synthesize_timeframe(df: pd.DataFrame, target_tf: str) -> pd.DataFrame:
     """
-    Convert 15min K-lines to a higher timeframe using OHLCV aggregation.
+    Convert K-lines to a higher timeframe using OHLCV aggregation.
+
+    For daily base data:
+        - 'weekly': Weekly aggregation
+        - 'monthly': Monthly aggregation
+
+    For minute base data:
+        - '30min', '1h', '2h', '4h': Time-based aggregation
+        - 'daily': Day-based aggregation
 
     Args:
-        df: DataFrame with 15min data (must have datetime column)
-        target_tf: Target timeframe ('30min', '1h', '2h', '4h')
+        df: DataFrame with base data (must have datetime column)
+        target_tf: Target timeframe
 
     Returns:
         DataFrame with aggregated OHLCV data
@@ -193,10 +333,14 @@ def synthesize_timeframe(df: pd.DataFrame, target_tf: str) -> pd.DataFrame:
         '1h': '1h',
         '2h': '2h',
         '4h': '4h',
+        'daily': 'D',
+        'weekly': 'W',
+        'monthly': 'ME',
     }
 
     if target_tf not in tf_map:
-        raise ValueError(f"Unknown target timeframe: {target_tf}")
+        raise ValueError(f"Unknown target timeframe: {target_tf}. "
+                        f"Available: {list(tf_map.keys())}")
 
     rule = tf_map[target_tf]
 
@@ -209,6 +353,12 @@ def synthesize_timeframe(df: pd.DataFrame, target_tf: str) -> pd.DataFrame:
         'volume': 'sum',
     }
 
+    # Include hold/open_interest if present
+    if 'hold' in df.columns:
+        agg_dict['hold'] = 'last'
+    if 'open_interest' in df.columns:
+        agg_dict['open_interest'] = 'last'
+
     resampled = df.resample(rule).agg(agg_dict).dropna()
 
     # Reset datetime as column
@@ -219,17 +369,20 @@ def synthesize_timeframe(df: pd.DataFrame, target_tf: str) -> pd.DataFrame:
 
 def synthesize_all_timeframes(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
-    Synthesize all configured timeframes from 15min base data.
+    Synthesize all configured timeframes from base data.
 
     Args:
-        df: DataFrame with 15min data
+        df: DataFrame with base data
 
     Returns:
         Dictionary mapping timeframe name to DataFrame
     """
     results = {}
     for tf in _data_config.synthetic_timeframes:
-        results[tf] = synthesize_timeframe(df, tf)
+        try:
+            results[tf] = synthesize_timeframe(df, tf)
+        except Exception as e:
+            print(f"Warning: Could not synthesize {tf}: {e}")
     return results
 
 
@@ -259,7 +412,9 @@ def generate_walk_forward_splits(
     """
     Generate walk-forward split indices for backtesting.
 
-    Pattern: 12 months train + 2 weeks embargo + 1 month validation
+    Pattern: train + embargo + validation
+    - 分钟数据模式 (推荐): 1个月训练 + 1周embargo + 2周验证
+    - 日线数据模式: 12个月训练 + 2周embargo + 1个月验证
 
     Args:
         start_date: Start date string (YYYY-MM-DD)
@@ -277,7 +432,16 @@ def generate_walk_forward_splits(
 
     train_months = _data_config.train_window_months
     embargo_weeks = _data_config.embargo_weeks
-    valid_months = _data_config.valid_window_months
+
+    # 支持周数或月数作为验证窗口
+    valid_months = getattr(_data_config, 'valid_window_months', 0)
+    valid_weeks = getattr(_data_config, 'valid_window_weeks', 2)
+
+    # 确定滚动步长
+    if valid_months > 0:
+        roll_delta = relativedelta(months=valid_months)
+    else:
+        roll_delta = relativedelta(weeks=valid_weeks)
 
     splits = []
     split_id = 0
@@ -291,8 +455,11 @@ def generate_walk_forward_splits(
         # Embargo period: embargo_weeks gap
         embargo_end = train_end + relativedelta(weeks=embargo_weeks)
 
-        # Validation period: valid_months after embargo
-        valid_end = embargo_end + relativedelta(months=valid_months)
+        # Validation period: valid_months or valid_weeks after embargo
+        if valid_months > 0:
+            valid_end = embargo_end + relativedelta(months=valid_months)
+        else:
+            valid_end = embargo_end + relativedelta(weeks=valid_weeks)
 
         # Stop if validation end exceeds end_date
         if valid_end > end:
@@ -307,8 +474,8 @@ def generate_walk_forward_splits(
             'valid_end': valid_end.strftime('%Y-%m-%d'),
         })
 
-        # Move forward by valid_months for next split
-        current_start = current_start + relativedelta(months=valid_months)
+        # Move forward by roll_delta for next split
+        current_start = current_start + roll_delta
         split_id += 1
 
     return splits
@@ -316,7 +483,10 @@ def generate_walk_forward_splits(
 
 def get_locked_predict_dates(end_date: str) -> Tuple[str, str]:
     """
-    Get locked prediction set dates (last N months before end_date).
+    Get locked prediction set dates.
+
+    For minute data: last N weeks before end_date
+    For daily data: last N months before end_date
 
     Args:
         end_date: End date string (YYYY-MM-DD)
@@ -325,7 +495,16 @@ def get_locked_predict_dates(end_date: str) -> Tuple[str, str]:
         Tuple of (start_date, end_date) for locked prediction set
     """
     end = pd.to_datetime(end_date)
-    start = end - relativedelta(months=_data_config.locked_predict_months)
+
+    # 优先使用周数配置（适用于分钟数据）
+    locked_weeks = getattr(_data_config, 'locked_predict_weeks', None)
+    locked_months = getattr(_data_config, 'locked_predict_months', 6)
+
+    if locked_weeks is not None and locked_weeks > 0:
+        start = end - relativedelta(weeks=locked_weeks)
+    else:
+        start = end - relativedelta(months=locked_months)
+
     return start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')
 
 
@@ -384,17 +563,33 @@ def load_data(symbol: str, timeframe: str = "15min") -> Optional[pd.DataFrame]:
 
     Args:
         symbol: Futures symbol
-        timeframe: Timeframe ('15min', '30min', '1h', '2h', '4h')
+        timeframe: Timeframe ('15min', '30min', '1h', '2h', '4h') for minute data
+                   or ('daily', 'weekly', 'monthly') for daily data
 
     Returns:
         DataFrame or None if not found
     """
-    if timeframe == "15min":
-        # Load raw 15min data
+    # Determine base timeframe
+    if _data_config.data_type == "minute":
+        base_tf = "15min"
+    else:
+        base_tf = "daily"
+
+    if timeframe == base_tf:
+        # Load raw data
         df = load_raw_data(symbol)
     else:
         # Load synthesized data
         df = load_synthetic_data(symbol, timeframe)
+        # If not cached, try to synthesize from raw data
+        if df is None:
+            raw_df = load_raw_data(symbol)
+            if raw_df is not None and not raw_df.empty:
+                try:
+                    df = synthesize_timeframe(raw_df, timeframe)
+                    save_synthetic_data(symbol, timeframe, df)
+                except Exception as e:
+                    print(f"Warning: Could not synthesize {timeframe} for {symbol}: {e}")
 
     if df is not None and not df.empty:
         df['datetime'] = pd.to_datetime(df['datetime'])

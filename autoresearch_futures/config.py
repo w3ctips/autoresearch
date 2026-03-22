@@ -9,14 +9,24 @@ from typing import List
 @dataclass
 class DataConfig:
     """Data preparation configuration."""
+    # 数据源类型: "minute" (15分钟线，推荐) 或 "daily" (日线)
+    # 注意: 分钟数据只能获取最近约1000条（约2.5个月）
+    data_type: str = "minute"
+
+    # 分钟数据的基础周期
     base_timeframe: str = "15min"
+
+    # 可合成的周期 (从15分钟合成)
     synthetic_timeframes: List[str] = field(default_factory=lambda: ["30min", "1h", "2h", "4h"])
 
     # Walk-Forward split parameters
-    train_window_months: int = 12
-    embargo_weeks: int = 2
-    valid_window_months: int = 1
-    locked_predict_months: int = 6
+    # 注意: 分钟数据时间范围有限，需要调整窗口大小
+    # 适合分钟数据的配置: 1个月训练 + 1周embargo + 2周验证
+    train_window_months: int = 1      # 训练窗口 (分钟数据推荐1个月)
+    embargo_weeks: int = 1            # 隔离期
+    valid_window_months: int = 0      # 验证窗口月份，用周数代替
+    valid_window_weeks: int = 2       # 验证窗口周数
+    locked_predict_weeks: int = 2     # 锁定预测集 (分钟数据推荐2周)
 
     # Data directory
     cache_dir: str = "~/.cache/autoresearch-futures"
@@ -64,6 +74,7 @@ class Config:
 
 
 # Signal parameters for each theory (agent can modify these)
+# 适用于15分钟高频策略
 DEFAULT_PARAMS = {
     "smc": {
         "ob_lookback": 20,

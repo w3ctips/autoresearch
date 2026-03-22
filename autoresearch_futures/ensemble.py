@@ -19,9 +19,19 @@ def normalize_weights(weights: Dict[str, float]) -> Dict[str, float]:
 def simple_vote(
     signals: Dict[str, pd.Series],
     weights: Dict[str, float],
-    threshold: float = 0.5,
+    threshold: float = 0.3,  # 降低阈值，使单个理论也能产生信号
 ) -> pd.Series:
-    """Combine signals using weighted voting."""
+    """
+    Combine signals using weighted voting.
+
+    Args:
+        signals: Dict of signal Series (values: -1, 0, 1)
+        weights: Dict of theory weights
+        threshold: Minimum weighted sum to generate a signal
+
+    Returns:
+        Combined signal Series
+    """
     weights = normalize_weights(weights)
     weighted_sum = pd.Series(0.0, index=next(iter(signals.values())).index)
     for theory, signal in signals.items():
@@ -44,6 +54,27 @@ def consensus_filter(signals: Dict[str, pd.Series]) -> pd.Series:
         if all(v == 1 for v in values):
             result.iloc[i] = 1
         elif all(v == -1 for v in values):
+            result.iloc[i] = -1
+
+    return result
+
+
+def any_signal(signals: Dict[str, pd.Series]) -> pd.Series:
+    """
+    Generate signal when any theory has a signal.
+    Less restrictive than consensus, more signals.
+    """
+    signal_list = list(signals.values())
+    result = pd.Series(0, index=signal_list[0].index)
+
+    for i in range(len(result)):
+        values = [s.iloc[i] for s in signal_list]
+        buy_signals = sum(1 for v in values if v == 1)
+        sell_signals = sum(1 for v in values if v == -1)
+
+        if buy_signals > sell_signals and buy_signals > 0:
+            result.iloc[i] = 1
+        elif sell_signals > buy_signals and sell_signals > 0:
             result.iloc[i] = -1
 
     return result
@@ -74,11 +105,26 @@ def ensemble_signals(
     weights: Dict[str, float],
     mode: str = "vote",
 ) -> Dict:
-    """Combine signals from multiple theories."""
+    """
+    Combine signals from multiple theories.
+
+    Args:
+        signals: Dict of signal Series from each theory
+        weights: Dict of theory weights
+        mode: Combination mode
+            - "vote": Weighted voting (default)
+            - "consensus": Require all theories to agree
+            - "any": Any theory with signal
+
+    Returns:
+        Dict with combined 'signal' and 'confidence'
+    """
     if mode == "vote":
         combined = simple_vote(signals, weights)
     elif mode == "consensus":
         combined = consensus_filter(signals)
+    elif mode == "any":
+        combined = any_signal(signals)
     else:
         raise ValueError(f"Unknown mode: {mode}")
 

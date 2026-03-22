@@ -10,7 +10,7 @@
 
 - **三大信号理论**: SMC结构分析、动能指标、线性推演
 - **动态周期合成**: 从15min基础周期合成30min/1h/2h/4h
-- **Walk-Forward验证**: 12月训练 + 2周Embargo + 1月验证，防止过拟合
+- **Walk-Forward验证**: 1月训练 + 1周Embargo + 2周验证，防止过拟合
 - **多目标评估**: 扣费净收益 + 夏普比率 + 胜率 + 信号精确率
 - **信号推送**: 微信/Telegram/邮件推送交易信号
 
@@ -54,13 +54,15 @@ pip install -e ".[dev]"
 cd ..
 
 # 下载期货数据并生成滚动窗口切分
-python -m autoresearch_futures prepare
+python -m autoresearch_futures prepare --symbols rb i hc
 ```
 
 这会：
-- 使用 akshare 下载全市场主力合约的 15min K线数据
+- 使用 akshare 下载指定品种主力合约的 15min K线数据
 - 合成 30min/1h/2h/4h 周期数据
 - 生成 Walk-Forward 滚动窗口切分
+
+**注意**: akshare 的分钟数据接口只返回最近约 1000 条数据（约 2.5 个月）。
 
 数据存储在 `~/.cache/autoresearch-futures/`
 
@@ -68,7 +70,7 @@ python -m autoresearch_futures prepare
 
 ```bash
 # 运行单次进化实验
-python -m autoresearch_futures evolve
+python -m autoresearch_futures evolve --symbols rb
 ```
 
 输出示例：
@@ -76,7 +78,6 @@ python -m autoresearch_futures evolve
 ---
 score:    0.851234
 rb: sharpe=1.2400 return=0.1520
-i: sharpe=1.1800 return=0.1340
 ```
 
 ### 4. 运行测试
@@ -120,11 +121,11 @@ Agent 会自动：
 ## CLI 命令
 
 ```bash
-# 数据准备
-python -m autoresearch_futures prepare [--symbols rb i hc] [--force]
+# 数据准备 (下载15分钟K线数据)
+python -m autoresearch_futures prepare --symbols rb i hc
 
 # 运行进化
-python -m autoresearch_futures evolve [--symbols rb i]
+python -m autoresearch_futures evolve --symbols rb i
 
 # 运行测试
 python -m autoresearch_futures test
@@ -135,12 +136,20 @@ python -m autoresearch_futures test
 核心配置在 `config.py` 中：
 
 ```python
-# 数据划分参数
-train_window_months = 12      # 训练窗口
-embargo_weeks = 2             # 隔离期
-valid_window_months = 1       # 验证窗口
-locked_predict_months = 6     # 锁定预测集
+@dataclass
+class DataConfig:
+    data_type: str = "minute"           # 数据类型: "minute" 或 "daily"
+    base_timeframe: str = "15min"       # 基础周期
+    synthetic_timeframes: ["30min", "1h", "2h", "4h"]  # 合成周期
 
+    # Walk-Forward 参数 (适配分钟数据)
+    train_window_months: int = 1        # 训练窗口: 1个月
+    embargo_weeks: int = 1              # 隔离期: 1周
+    valid_window_weeks: int = 2         # 验证窗口: 2周
+    locked_predict_weeks: int = 2       # 锁定预测集: 2周
+```
+
+```python
 # 交易成本
 commission_rate = 0.0001      # 手续费率 (万分之一)
 slippage_ticks = 1            # 滑点 tick 数
@@ -166,6 +175,18 @@ THEORY_WEIGHTS = {
 ```
 score = 0.25*夏普比率 + 0.30*扣费收益 + 0.15*胜率 + 0.15*信号精确率 - 0.15*最大回撤
 ```
+
+## 数据接口说明
+
+本项目使用 [akshare](https://akshare.akfamily.xyz/) 作为数据源：
+
+- **分钟数据**: `futures_zh_minute_sina(symbol='RB0', period='15')`
+  - 返回最近约 1000 条数据
+  - 支持周期: '1', '5', '15', '30', '60' 分钟
+
+- **日线数据**: `futures_main_sina(symbol='RB0')`
+  - 返回完整历史数据（2009年至今）
+  - 可通过 `config.py` 切换数据类型
 
 ## 依赖
 
